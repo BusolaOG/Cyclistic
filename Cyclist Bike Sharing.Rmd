@@ -1,0 +1,357 @@
+---
+title:  How a Bike Share Can Navigate Speedy Success
+output:
+  html_document: default
+  pdf_document: default
+date: "2022-10-24"
+---
+
+**About Cyclist**
+A bike-share program that features more than 5,800 bicycles and 600 docking stations. Cyclistic sets itself apart by also offering reclining bikes, hand tricycles, and cargo bikes, making bike-share more inclusive to people with disabilities and riders who can’t use a standard two-wheeled bike. The majority of riders opt for traditional bikes; about
+8% of riders use the assistive options. Cyclistic users are more likely to ride for leisure, but about 30% use them to
+commute to work each day.
+
+**Key Stakeholders**
+* Cyclistic executive team
+* Lily Moreno- Line manager and marketing director
+* Cyclistic marketing analytics team
+
+**Business Problem**
+How do annual members and casual riders use Cyclistic bikes differently?
+
+**Analytical Objective**
+Cyclistic’s historical trip data to analyze and identify trends. 
+
+**How can your insights drive business decisions?**
+The insights will help the marketing team to increase annual members.
+
+
+**Data Overview**
+The data  used was 12 months data, individual csv files, from Oct 2021 - Sept 2022. The datasets have a different name because Cyclistic is a fictional company. The data has been made available by Motivate International Inc. It is public data, but data-privacy issues prohibit me from using riders’ personally identifiable information. The files 
+
+The dataset is reliable, original, comprehensive, current and cited. The files used for the analysis doesn't have any personal information about the riders. All the files have consistent columns and each column has the correct type of data.
+
+**Historical Bike Trips Data Analysis**
+Load R packages
+```{r}
+library(tidyverse)
+library(skimr)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(janitor)
+library(here)
+library(geosphere)
+library(measurements)
+library(ggplot2)
+```
+Upload the files and set working directory
+
+```{r}
+Oct21 <- read.csv("October 21.csv")
+Nov21 <- read.csv("November 21.csv")
+Dec21 <- read.csv("December 21.csv")
+Jan22 <- read.csv("January 22.csv")
+Feb22 <- read.csv("February 22.csv")
+Mar22 <- read.csv("March 22.csv")
+Apr22 <- read.csv("April 22.csv")
+May22 <- read.csv("May 22.csv")
+Jun22 <- read.csv("June 22.csv")
+Jul22 <- read.csv("July 22.csv")
+Aug22 <- read.csv("August 22.csv")
+Sep22 <- read.csv("September 22.csv")
+```
+
+Aggregate all the individual monthly data into 1 annual data table
+```{r}
+Annual_Trips <- rbind(Oct21,Nov21,Dec21,Jan22,Feb22,Mar22,Apr22,May22,Jun22,Jul22,Aug22,Sep22) #Combine all dataframes
+#Show data types
+str(Annual_Trips) #From the structure, the dates need to be formatted
+head(Annual_Trips)
+
+Annual_Trips$started_at <- as.POSIXct(Annual_Trips$started_at, format = "%Y-%m-%d %H:%M:%S") 
+Annual_Trips$ended_at <- as.POSIXct(Annual_Trips$ended_at, format = "%Y-%m-%d %H:%M:%S") 
+View(Annual_Trips)
+
+
+```
+
+Clean Up and Add Data to Prepare for Analysis 
+```{r}
+sum(duplicated(Annual_Trips)) #No of duplicates
+nrow(distinct(Annual_Trips))#Matches the number of observations
+missing <- !complete.cases(Annual_Trips) #show missing values
+length(unique(Oct21$ride_id))
+```
+
+Create insights
+```{r}
+
+Annual_Trips$Duration <- difftime(as.POSIXct(Annual_Trips$ended_at), as.POSIXct(Annual_Trips$started_at), units = "mins") #Calculate time difference to show duration of each ride
+
+Annual_Trips$Duration <- round(Annual_Trips$Duration , digits = 2)
+
+Annual_Trips <- Annual_Trips[, c(1,2,13,3,4,14,9,10,11,12)]#selecting specific variables and reordering
+
+Annual_Trips$Duration <- as.numeric(Annual_Trips$Duration) #convert to numeric to be able to show analysis
+
+Annual_Trips <- Annual_Trips %>% 
+  transform(Distance=distHaversine(cbind(start_lng, start_lat), cbind(end_lng, end_lat))) #To calculate the distance of each trip
+
+str(Annual_Trips)
+
+```
+
+```{r}
+#Eliminate negative values in the Duration and Distance variables and create a new data frame for that
+Annual_Trips2 <- Annual_Trips %>% 
+  filter(Duration >= 0, Distance >= 0)
+```
+
+Converting the Distance variable from meters to kilometers
+```{r}
+Annual_Trips2$Distance <- (conv_unit(Annual_Trips2$Distance, "m", "km"))
+```
+
+Summary and Analysis
+
+```{r}
+summary(Annual_Trips2)
+```
+* On the average, most trips lasted 2.14km and the maximum distance covered is 1,190.850km, which seems to be really high. With the rides around the 3rd quartile lasting 2.8km, Could the maximum distance of 1,000km be an error? 
+
+Most of the trips lasted an average of 17 minutes, while the longest duration recorded was 40,705.02. Is that an outlier? It is also strange because the corresponding distance for the duration is 2.5km. 
+
+```{r  Rename variable}
+Annual_Trips2 <- Annual_Trips2 %>% 
+  rename(user_type = member_casual)
+```
+
+Data Analysis
+
+User Type Distribution
+```{r}
+#Display number (and percentage) of rides based on user type 
+User_Type <- Annual_Trips2 %>% 
+group_by(user_type) %>% 
+summarise(total_no = n()) %>% 
+mutate(percent=round(total_no/sum(total_no),2)) %>%
+arrange(desc(percent))
+```
+
+User Type Distribution - Visualisation
+```{r}
+ggplot(User_Type, aes(x ="", y = percent, fill = user_type))+
+  geom_col(color = "white")+
+  geom_label(aes(label = percent), position = position_stack(vjust = 0.5), show.legend = FALSE)+
+  theme_classic()+
+  coord_polar("y")+
+   theme_void()+
+  labs(title = "Bike Sharing User Type Distribution", fill = "User Type", x =NULL, y = NULL)
+```
+There are slightly more  rides by annual members than casual users
+
+
+Average Duration per User Type
+```{r}
+Ride_Duration <- Annual_Trips2 %>% 
+  group_by(user_type) %>% 
+  summarise(Avg_duration = mean(Duration)) 
+```
+
+```{r}
+
+ggplot(Ride_Duration, aes(x= user_type, y= Avg_duration))+
+  geom_bar(stat = "identity", fill="orange")+
+  coord_flip()+
+  labs(title="Duration per User Type", subtitle = "Duration is in mins")
+```
+* Casual users trip duration doubles that of annual members
+```{r}
+Ride_Distance <- Annual_Trips2 %>% 
+  group_by(user_type) %>% 
+  summarise(Avg_distance = mean(Distance)) 
+```
+
+```{r}
+ggplot(Ride_Distance, aes(x= user_type, y= Avg_distance))+
+  geom_bar(stat = "identity", fill = "steelblue")+
+  coord_flip()
+  labs(title="Duration per User Type", subtitle = "Distance is in Km")
+```
+
+
+No of Rides Vs User Types and Type of Rides
+
+```{r}
+UserVsRides<- Annual_Trips2 %>% 
+  group_by(user_type, rideable_type) %>% 
+  summarise(number_of_rides = n())
+```
+Bike Types Vs User Types Analysis
+```{r Electric Bikes}
+ElectricBikes<- Annual_Trips2 %>% 
+  filter(rideable_type == "electric_bike") %>% 
+  group_by(user_type) %>% 
+  summarise(number_of_rides = n()) %>% 
+  mutate(percent = number_of_rides/sum(number_of_rides)*100) %>% 
+
+ElectricBikes$percent <- round(ElectricBikes$percent, digits = 2 )
+```
+
+```{r}
+  ggplot(ElectricBikes, aes(x ="", y = percent, fill = user_type))+
+  geom_col(color = "white")+
+  geom_label(aes(label = percent), position = position_stack(vjust = 0.5), show.legend = FALSE)+
+  theme_classic()+
+  coord_polar("y")+
+   theme_void()+
+   scale_fill_brewer(palette="Blues")+
+  labs(title = "Electric Bike Usage", fill = "User Type", x =NULL, y = NULL)
+```
+
+
+```{r Classic Bikes}
+ClassicBikes<- Annual_Trips2 %>% 
+  filter(rideable_type == "classic_bike") %>% 
+  group_by(user_type) %>% 
+  summarise(number_of_rides = n()) %>% 
+  mutate(percent = number_of_rides/sum(number_of_rides)*100)
+
+ClassicBikes$percent<- round(ClassicBikes$percent, digits = 2 )
+```
+
+```{r}
+ggplot(ClassicBikes, aes(x ="", y = percent, fill = user_type))+
+  geom_col(color = "white")+
+  geom_label(aes(label = percent), position = position_stack(vjust = 0.5), show.legend = FALSE)+
+  theme_classic()+
+  coord_polar("y")+
+   theme_void()+
+   scale_fill_brewer(palette="Blues")+
+  labs(title = "Classic Bike Usage", fill = "User Type", x =NULL, y = NULL)
+```
+
+
+No of Rides Vs User Types and Type of Rides - Visualisation
+```{r}
+ggplot(UserVsRides, aes(x=rideable_type, y = number_of_rides, fill = user_type))+
+  geom_bar(stat = "identity")+
+  labs(title="No of Rides Vs User Types and Type of Rides")
+```
+
+**The docked bikes were used just a handful of times, and by only casual users. 
+** More annual members chose the classic bike over the electric bikes, and they accounted for about double the number of casual users
+**More annual members chose the electric bikes compared to casual riders
+
+Analysis based on Timing
+```{r}
+#The way the data currently is, it can only be aggregated on a ride level, which would be too granular. Therefore create columns for date, day, day of week month and year to create additional opportunities for data analysis
+Annual_Trips2$date <- as.Date(Annual_Trips2$started_at)
+Annual_Trips2$day <- as.numeric(format(as.Date(Annual_Trips2$date), "%d"))
+Annual_Trips2$day_of_week <- format(as.Date(Annual_Trips2$date), "%A")
+Annual_Trips2$month <- as.numeric(format(as.Date(Annual_Trips2$date), "%m"))
+Annual_Trips2$year <- as.numeric(format(as.Date(Annual_Trips2$date), "%Y"))
+```
+
+Day of Week Analysis Against User Types
+```{r}
+DOW <- Annual_Trips2 %>% 
+  group_by (user_type, day_of_week) %>% 
+  summarise(total_no = n(), average_duration = mean(Duration), average_distance = mean(Distance))
+```
+
+
+```{r}
+Annual_Trips2$day_of_week <- factor(Annual_Trips2$day_of_week, 
+  levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+
+DOW$day_of_week <- factor(DOW$day_of_week, 
+  levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+```
+
+
+Day of the week Ride Analysis
+```{r}
+options(scipen = 999) #To stop scientific notation
+
+ggplot(DOW, aes( x = day_of_week, y = total_no, fill = day_of_week))+
+  geom_bar(stat = "identity")+
+    labs(title="Day of the week Ride Analysis", fill= "Days", x= "Total Number of Rides", y = "Days of the Week")+
+  coord_flip()
+  
+```
+Most of the rides are on Saturday and least on Monday
+
+
+```{r}
+str(DOW)
+
+ggplot(DOW, aes(x= day_of_week, y = total_no, fill = user_type))+
+  geom_bar(stat = "identity", position = "dodge")+
+  labs(title="Day of Week Analysis Against User Types", x= "Days of Week", y = "Total Number", fill= "User Types")+
+   theme(axis.text.x = element_text(angle = 80, hjust = 1))
+```
+The casual users rode more at the weekend - the most on Saturday, followed by Sunday
+
+Monthly Ride Summary
+```{r}
+Monthly <- Annual_Trips2 %>% 
+  group_by(user_type, month) %>% 
+             summarise(No_of_Trips = n(), average_duration = mean(Duration), average_distance = mean(Distance)) %>% 
+             arrange(user_type, desc(No_of_Trips))
+
+Monthly$average_duration <- round(Monthly$average_duration, digits = 2)
+
+Monthly$average_distance <- round(Monthly$average_distance, digits = 2)
+
+```
+
+```{r}
+Monthly <- Monthly %>% 
+  mutate(month = month.abb[as.numeric(month)]) #converting numeric months to characters
+
+Monthly$month <- factor(Monthly$month, 
+  levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")) 
+#Ordering the months of the year
+
+```
+
+
+```{r}
+ggplot(Monthly, aes(x= month, y = No_of_Trips, fill = user_type))+
+  geom_bar(stat = "identity", position = "dodge")+
+  labs(title="Monthly Usage Analysis Vs User Types", x= "Months", y = "Total Rides", fill= "User Types")
+```
+
+
+September has the least no of rides - 253 rides in total. 
+
+
+```{r Observations and Recommendations}
+* Based on the data, though there are slightly more annual members, casual users spent a lot more time and rode the bikes for a longer distance, compared to annual members.
+
+* While casual riders rode more over the weekend, annual members had a drop during weekends. That infers that many annual members work Mondays - Fridays, and causal users rode for leisure at the weekends
+
+There is an obvious decline in the nuber of rides in the colder months
+```
+
+
+Recommendations
+```{r}
+The marketing team needs to develop a campaign targeted to casual riders to signup for annual membetships and unlock certain benefits. Advertise this around warmer weather, when they are more likely to ride more.
+
+There is an opportunity fot the marketing team to design a campaign to encourage an uptake or demand for Docked bikes
+
+The marketing team should campaigns to persuade causal riders  to ride more during the week, such as incentives, discounts, loyalty programs etc
+
+
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
